@@ -115,6 +115,7 @@ impl<T> Atom<T> {
 }
 impl<'a> Context<'a> {
     pub fn new(egraph: &'a EGraph) -> Self {
+        log::info!("aaaa");
         Self {
             egraph,
             unit: egraph.sorts[&Symbol::from("Unit")].clone(),
@@ -136,6 +137,7 @@ impl<'a> Context<'a> {
         actions: &'a [Action],
     ) -> Result<(Query, Vec<Action>), Vec<TypeError>> {
         for fact in facts {
+            log::info!("-- typechecking {:?} ---", fact);
             self.typecheck_fact(fact);
         }
 
@@ -198,6 +200,7 @@ impl<'a> Context<'a> {
                 ENode::Func(f, ids) => {
                     let args = ids.iter().chain([id]).map(get_leaf).collect();
                     query.atoms.push(Atom { head: *f, args });
+                    log::info!("atom {}", f);
                 }
                 ENode::Prim(p, ids) => {
                     let args = ids.iter().chain([id]).map(get_leaf).collect();
@@ -205,7 +208,9 @@ impl<'a> Context<'a> {
                         head: p.clone(),
                         args,
                     });
+                    log::info!("filter {p:?}");
                 }
+
                 _ => {}
             }
         }
@@ -247,6 +252,7 @@ impl<'a> Context<'a> {
                 let mut ty: Option<ArcSort> = None;
                 let mut ids = Vec::with_capacity(exprs.len());
                 for expr in exprs {
+                    log::info!("expr {expr:?}");
                     match (expr, &ty) {
                         (_, Some(expected)) => {
                             ids.push(self.check_query_expr(expr, expected.clone()))
@@ -270,6 +276,7 @@ impl<'a> Context<'a> {
                 }
 
                 if let Some(ty) = ty {
+                    log::info!("later");
                     for e in later {
                         ids.push(self.check_query_expr(e, ty.clone()));
                     }
@@ -289,6 +296,7 @@ impl<'a> Context<'a> {
     }
 
     fn check_query_expr(&mut self, expr: &Expr, expected: ArcSort) -> Id {
+        log::info!("check_query_expr {expr:?}");
         match expr {
             Expr::Var(sym) if !self.egraph.functions.contains_key(sym) => {
                 match self.types.entry(*sym) {
@@ -724,6 +732,7 @@ impl EGraph {
                     stack.push(value);
                 }
                 Instruction::CallPrimitive(p, arity) => {
+                    log::warn!("{:?}", p);
                     let new_len = stack.len() - arity;
                     let values = &stack[new_len..];
                     if let Some(value) = p.apply(values) {

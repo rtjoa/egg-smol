@@ -59,3 +59,24 @@ impl PrimitiveLike for NotEqualPrimitive {
         (values[0] != values[1]).then(Value::unit)
     }
 }
+
+// pub struct NotPrimitive {
+//     unit: ArcSort,
+// }
+
+// impl PrimitiveLike for NotPrimitive {
+//     fn name(&self) -> Symbol {
+//         "!".into()
+//     }
+
+//     fn accept(&self, types: &[ArcSort]) -> Option<ArcSort> {
+//         match types {
+//             [_] => Some(self.unit.clone()),
+//             _ => None,
+//         }
+//     }
+
+//     fn apply(&self, values: &[Value]) -> Option<Value> {
+//         (values[0] != values[1]).then(Value::unit)
+//     }
+// } 

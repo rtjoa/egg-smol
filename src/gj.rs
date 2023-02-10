@@ -69,6 +69,7 @@ impl<'b> Context<'b> {
             tuple: vec![Value::fake(); cq.vars.len()],
             matches: 0,
         };
+        log::info!("bbbb");
 
         let (program, _vars, intersections) = egraph.compile_program(cq, timestamp_ranges)?;
 
@@ -223,6 +224,7 @@ impl EGraph {
         query: Query,
         types: &IndexMap<Symbol, ArcSort>,
     ) -> CompiledQuery {
+        log::info!("compile_gj_query");
         // NOTE: this vars order only used for ordering the tuple,
         // It is not the GJ variable order.
         let mut vars: IndexMap<Symbol, VarInfo> = Default::default();
@@ -232,7 +234,9 @@ impl EGraph {
         }
 
         for (i, atom) in query.atoms.iter().enumerate() {
+            log::info!("atom {} {:?}", i, atom);
             for v in atom.vars() {
+                log::info!("var {:}", v);
                 // only count grounded occurrences
                 vars.entry(v).or_default().occurences.push(i)
             }
@@ -243,6 +247,8 @@ impl EGraph {
                 vars.entry(v).or_default();
             }
         }
+
+        log::info!("{:?}", vars);
 
         CompiledQuery { query, vars }
     }
@@ -427,6 +433,7 @@ impl EGraph {
         F: FnMut(&[Value]) -> Result,
     {
         let has_atoms = !cq.query.atoms.is_empty();
+        log::info!("atoms {:?}", cq.query.atoms);
 
         if has_atoms {
             let do_seminaive = self.seminaive;
@@ -486,6 +493,7 @@ impl EGraph {
                 timestamp_ranges[atom_i] = 0..timestamp;
             }
         } else if let Some((mut ctx, program, _)) = Context::new(self, cq, &[]) {
+            log::info!("no atoms!");
             let tries = LazyTrie::make_initial_vec(cq.query.atoms.len());
             let mut trie_refs = tries.iter().collect::<Vec<_>>();
             ctx.eval(&mut trie_refs, &program.0, &mut f).unwrap_or(());
