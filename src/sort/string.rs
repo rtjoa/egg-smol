@@ -24,6 +24,30 @@ impl Sort for StringSort {
         self
     }
 
+    fn register_primitives(self: Arc<Self>, eg: &mut EGraph) {
+        type Opt<T=()> = Option<T>;
+
+        add_primitives!(eg, "<" = |a: Symbol, b: Symbol| -> Opt { (a.as_str() < b.as_str()).then(|| ()) }); 
+        add_primitives!(eg, ">" = |a: Symbol, b: Symbol| -> Opt { (a.as_str() > b.as_str()).then(|| ()) }); 
+        add_primitives!(eg, "<=" = |a: Symbol, b: Symbol| -> Opt { (a.as_str() <= b.as_str()).then(|| ()) }); 
+        add_primitives!(eg, ">=" = |a: Symbol, b: Symbol| -> Opt { (a.as_str() >= b.as_str()).then(|| ()) }); 
+
+        add_primitives!(eg, "min" = |a: Symbol, b: Symbol| -> Symbol {
+            if a.as_str() <= b.as_str() {
+                a
+            } else {
+                b
+            }
+        }); 
+        add_primitives!(eg, "max" = |a: Symbol, b: Symbol| -> Symbol {
+            if a.as_str() >= b.as_str() {
+                a
+            } else {
+                b
+            }
+        });
+    }
+
     fn make_expr(&self, value: Value) -> Expr {
         assert!(value.tag == self.name);
         let sym = Symbol::from(NonZeroU32::new(value.bits as _).unwrap());
