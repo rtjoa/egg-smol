@@ -1,0 +1,945 @@
+(datatype create-me-after-clear (CreateMeAfterClear))
+(CreateMeAfterClear)
+
+;; Our bool, for use in actions only
+(datatype bool (True) (False) (Incomparable))
+(function or (bool bool) bool)
+(function and (bool bool) bool)
+(function not (bool) bool)
+
+(rule ((= CreateMeAfterClear CreateMeAfterClear))
+      ((union (or False False) False)
+       (union (or False True) True)
+       (union (or True False) True)
+       (union (or True True) True)
+       (union (or Incomparable Incomparable) Incomparable)
+       (union (or Incomparable False) Incomparable)
+       (union (or False Incomparable) Incomparable)
+       (union (or Incomparable True) True)
+       (union (or True Incomparable) True)
+       (union (and False False) False)
+       (union (and False True) False)
+       (union (and True False) False)
+       (union (and Incomparable Incomparable) Incomparable)
+       (union (and Incomparable False) False)
+       (union (and False Incomparable) False)
+       (union (and Incomparable True) Incomparable)
+       (union (and True Incomparable) Incomparable)
+       (union (and True True) True)
+       (union (not False) True)
+       (union (not True) False)))
+
+; (rewrite (or True x) True)
+; (rewrite (or x True) True)
+
+(function and3 (bool bool bool) bool)
+(rewrite (and3 x y z) (and (and x y) z))
+
+(function or3 (bool bool bool) bool)
+(rewrite (or3 x y z) (or (or x y) z))
+
+(datatype int (Int i64))
+(function add (int int) int)
+(rule ((= f (add (Int x) (Int y))))
+      ((set (add (Int x) (Int y)) (Int (+ x y)))))
+
+(function lt (int int) bool)
+(rule ((= f (lt (Int x) (Int y))) (< x y))
+      ((set (lt (Int x) (Int y)) True)))
+(rule ((= f (lt (Int x) (Int y))) (>= x y))
+      ((set (lt (Int x) (Int y)) False)))
+
+(function gt (int int) bool)
+(rule ((= f (gt (Int x) (Int y))) (> x y))
+      ((set (gt (Int x) (Int y)) True)))
+(rule ((= f (gt (Int x) (Int y))) (<= x y))
+      ((set (gt (Int x) (Int y)) False)))
+
+(function gte (int int) bool)
+(rule ((= f (gte (Int x) (Int y))) (>= x y))
+      ((set (gte (Int x) (Int y)) True)))
+(rule ((= f (gte (Int x) (Int y))) (< x y))
+      ((set (gte (Int x) (Int y)) False)))
+
+(datatype str (Str String))
+
+(function gt-str (str str) bool)
+(rule ((= f (gt-str (Str x) (Str y))) (> x y))
+      ((set (gt-str (Str x) (Str y)) True)))
+(rule ((= f (gt-str (Str x) (Str y))) (<= x y))
+      ((set (gt-str (Str x) (Str y)) False)))
+
+(define gt-str-test1 (gt-str (Str "b") (Str "a")))
+(run 100)
+(check (= True gt-str-test1))
+
+(function eq-str (str str) bool)
+(rule ((= f (eq-str (Str x) (Str x))))
+      ((set (eq-str (Str x) (Str x)) True)))
+(rule ((= f (eq-str (Str x) (Str y))) (!= x y))
+      ((set (eq-str (Str x) (Str y)) False)))
+
+
+(datatype sign (Pos) (Neg))
+
+(datatype expr)
+
+(datatype expr-list
+    (Args expr expr-list)
+    (ArgsEnd))
+
+(function Function (String expr-list) expr)
+(function Var (i64) expr)
+;; (function Const (String) expr)
+
+(datatype literal
+    (Predicate sign String expr-list)
+    (Eq sign expr expr)
+    ;; (Neq expr expr)
+    (Bogus i64))
+
+(datatype clause
+    (DisjunctsEnd)
+    (Disjuncts literal clause))
+
+(relation demand-bool (bool))
+; Clausal "or" is AC ---
+(ruleset ac)
+
+(function revapp (clause clause) clause)
+(rule ((= f (revapp DisjunctsEnd acc)))
+      ((set (revapp DisjunctsEnd acc) acc))
+      :ruleset ac)
+(rule ((= f (revapp (Disjuncts x rest) acc)))
+      ((set (revapp (Disjuncts x rest) acc) (revapp rest (Disjuncts x acc))))
+      :ruleset ac)
+
+(function reverse (clause) clause)
+(rule ((= f (reverse c)))
+      ((set (reverse c) (revapp c DisjunctsEnd)))
+      :ruleset ac)
+
+; Swap first two
+(rule ((= c (Disjuncts x (Disjuncts y rest))))
+      ((union c (Disjuncts y (Disjuncts x rest))))
+      :ruleset ac)
+; Move first to end
+(rule ((= c (Disjuncts x rest)))
+      ((union c (reverse (Disjuncts x (reverse rest)))))
+      :ruleset ac)
+
+; Eq/Neq is symmetric
+(rule ((= f (Eq sgn expr1 expr2)))
+      ((union f (Eq sgn expr2 expr1)))
+      :ruleset ac)
+
+(define c1 (Disjuncts (Bogus 1) (Disjuncts (Bogus 2) (Disjuncts (Bogus 3) (Disjuncts (Bogus 4) (Disjuncts (Bogus 5) DisjunctsEnd))))))
+(define c2 (Disjuncts (Bogus 3) (Disjuncts (Bogus 5) (Disjuncts (Bogus 1) (Disjuncts (Bogus 4) (Disjuncts (Bogus 2) DisjunctsEnd))))))
+(define c3 (Disjuncts (Bogus 3) (Disjuncts (Bogus 5) (Disjuncts (Bogus 1) (Disjuncts (Bogus 4) (Disjuncts (Bogus 1) DisjunctsEnd))))))
+(run-schedule (saturate ac))
+
+(check (= c1 c2))
+(check (!= c1 c3))
+
+; (clear)
+(CreateMeAfterClear)
+
+;; literal ordering ---
+
+;; predicate, function, and const symbols must be disjoint
+
+(datatype term
+      (Literal literal)
+      (Expr expr))
+;; (rule ((= f (Eq sgn lhs rhs)))
+;;       ((Expr lhs) (Expr rhs)))
+;; (rule ((= f (Predicate sgn name args)))
+;;       ((Literal (Predicate sgn name args))))
+
+(function w-expr (expr) int)
+(function w-expr-list (expr-list) int)
+(function w-literal (literal) int)
+(function w-term (term) int)
+
+
+(rule ((= f (Var i)))
+      ((set (w-expr (Var i)) (Int 1))))
+(rule ((= f (Function name args))
+       (= args-w (w-expr-list args)))
+      ((set (w-expr (Function name args))
+            (add (Int 2) args-w))))
+
+(rule ((= ArgsEnd ArgsEnd))
+      ((set (w-expr-list ArgsEnd) (Int 0))))
+(rule ((= f (Args arg rest))
+       (= arg-w (w-expr arg))
+       (= rest-w (w-expr-list rest)))
+      ((set (w-expr-list (Args arg rest))
+            (add (Int 2) (add arg-w rest-w)))))
+
+(rule ((= f (Predicate sgn name args))
+       (= args-w (w-expr-list args)))
+      ((set (w-literal (Predicate sgn name args))
+            (add (Int 2) args-w))))
+
+(rule ((= f (Literal x)))
+      ((set (w-term (Literal x)) (w-literal x))))
+
+(rule ((= f (Expr x)))
+      ((set (w-term (Expr x)) (w-expr x))))
+
+(datatype var-counts
+      (VarCounts i64 i64 var-counts)
+      (VarCountsEnd))
+
+(function count-vars-expr (expr) var-counts)
+(function count-vars-expr-list (expr-list) var-counts)
+(function count-vars-literal (literal) var-counts)
+
+(function add-counts (var-counts var-counts) var-counts)
+(rule ((= f (add-counts counts1 VarCountsEnd)))
+      ((set (add-counts counts1 VarCountsEnd) counts1)))
+(rule ((= f (add-counts VarCountsEnd counts2)))
+      ((set (add-counts VarCountsEnd counts2) counts2)))
+(rule ((= f (add-counts (VarCounts x x-count1 rest1)
+                        (VarCounts x x-count2 rest2))))
+      ((set (add-counts (VarCounts x x-count1 rest1)
+                        (VarCounts x x-count2 rest2))
+            (VarCounts x (+ x-count1 x-count2) (add-counts rest1 rest2)))))
+(rule ((= f (add-counts (VarCounts x1 x1-count rest1)
+                        (VarCounts x2 x2-count rest2)))
+       (< x1 x2))
+      ((set (add-counts (VarCounts x1 x1-count rest1)
+                        (VarCounts x2 x2-count rest2))
+            (VarCounts x1 x1-count (add-counts rest1 (VarCounts x2 x2-count rest2))))))
+(rule ((= f (add-counts (VarCounts x1 x1-count rest1)
+                        (VarCounts x2 x2-count rest2)))
+       (> x1 x2))
+      ((set (add-counts (VarCounts x1 x1-count rest1)
+                        (VarCounts x2 x2-count rest2))
+            (VarCounts x2 x2-count (add-counts (VarCounts x1 x1-count rest1) rest2)))))
+
+(rule ((= f (Var i)))
+      ((set (count-vars-expr (Var i)) (VarCounts i 1 VarCountsEnd))))
+
+(rule ((= ArgsEnd ArgsEnd))
+      ((set (count-vars-expr-list ArgsEnd) VarCountsEnd)))
+(rule ((= f (Args arg rest))
+       (= arg-counts (count-vars-expr arg))
+       (= rest-counts (count-vars-expr-list rest)))
+      ((set (count-vars-expr-list (Args arg rest))
+            (add-counts arg-counts rest-counts))))
+
+(rule ((= f (Function name args))
+       (= args-counts (count-vars-expr-list args)))
+      ((set (count-vars-expr (Function name args)) args-counts)))
+
+;; We only count var for predicates, equality represented by their greatest term
+(rule ((= f (Predicate sgn name args))
+       (= args-counts (count-vars-expr-list args)))
+      ((set (count-vars-literal (Predicate sgn name args)) args-counts)))
+
+(function var-counts-subset (var-counts var-counts) bool)
+(rule ((= f (var-counts-subset VarCountsEnd VarCountsEnd)))
+      ((set (var-counts-subset VarCountsEnd VarCountsEnd) True)))
+(rule ((= f (var-counts-subset VarCountsEnd (VarCounts x x-count rest))))
+      ((set (var-counts-subset VarCountsEnd (VarCounts x x-count rest)) True)))
+(rule ((= f (var-counts-subset (VarCounts x x-count rest) VarCountsEnd)))
+      ((set (var-counts-subset (VarCounts x x-count rest) VarCountsEnd) False)))
+(rule ((= f (var-counts-subset (VarCounts x x-count1 rest1)
+                               (VarCounts x x-count2 rest2)))
+       (<= x-count1 x-count2))
+      ((set (var-counts-subset (VarCounts x x-count1 rest1)
+                               (VarCounts x x-count2 rest2))
+            (var-counts-subset rest1 rest2))))
+(rule ((= f (var-counts-subset (VarCounts x x-count1 rest1)
+                               (VarCounts x x-count2 rest2)))
+       (> x-count1 x-count2))
+      ((set (var-counts-subset (VarCounts x x-count1 rest1)
+                               (VarCounts x x-count2 rest2))
+            False)))
+
+(rule ((= f (var-counts-subset (VarCounts x1 x1-count rest1)
+                               (VarCounts x2 x2-count rest2)))
+       (< x1 x2))
+      ((set (var-counts-subset (VarCounts x1 x1-count rest1)
+                               (VarCounts x2 x2-count rest2))
+            False)))
+
+(rule ((= f (var-counts-subset (VarCounts x1 x1-count rest1)
+                               (VarCounts x2 x2-count rest2)))
+       (> x1 x2))
+      ((set (var-counts-subset (VarCounts x1 x1-count rest1)
+                               (VarCounts x2 x2-count rest2))
+            (var-counts-subset (VarCounts x1 x1-count rest1) rest2))))
+
+
+(define count-vars-test
+      (Predicate Pos "test!"
+            (Args (Function "*"
+                      (Args (Function "*" (Args (Var 2) (Args (Var 1) ArgsEnd)))
+                      (Args (Var 3)
+                  ArgsEnd)))
+           (Args (Function "*"
+                      (Args (Var 1)
+                      (Args (Function "*" (Args (Var 2) (Args (Var 4) ArgsEnd)))
+                  ArgsEnd)))
+            ArgsEnd))))
+
+(define var-counts-subset-test1
+      (var-counts-subset
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 3 8 VarCountsEnd)))
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 3 8 VarCountsEnd)))))
+(define var-counts-subset-test2
+      (var-counts-subset
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 3 8 VarCountsEnd)))
+            (VarCounts 1 10 (VarCounts 2 1 (VarCounts 3 80 VarCountsEnd)))))
+(define var-counts-subset-test3
+      (var-counts-subset
+            (VarCounts 1 1 (VarCounts 3 8 VarCountsEnd))
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 3 8 VarCountsEnd)))))
+(define var-counts-subset-test4
+      (var-counts-subset
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 3 8 VarCountsEnd)))
+            (VarCounts 1 1 (VarCounts 3 8 VarCountsEnd))))
+(define var-counts-subset-test5
+      (var-counts-subset
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 4 8 VarCountsEnd)))
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 3 8 VarCountsEnd)))))
+(define var-counts-subset-test6
+      (var-counts-subset
+            (VarCounts 1 1 (VarCounts 2 2 (VarCounts 3 8 VarCountsEnd)))
+            (VarCounts 1 1 (VarCounts 2 1 (VarCounts 3 8 VarCountsEnd)))))
+
+(run 100)
+
+(check (= (count-vars-literal count-vars-test)
+      (VarCounts 1 2 (VarCounts 2 2 (VarCounts 3 1 (VarCounts 4 1 VarCountsEnd))))))
+(check (= var-counts-subset-test1 True))
+(check (= var-counts-subset-test2 True))
+(check (= var-counts-subset-test3 True))
+(check (= var-counts-subset-test4 False))
+(check (= var-counts-subset-test5 False))
+(check (= var-counts-subset-test6 False))
+; (clear)
+(CreateMeAfterClear)
+
+(function symbol-of (term) str)
+(rule ((= f (symbol-of (Literal (Predicate sgn name args)))))
+      ((set (symbol-of (Literal (Predicate sgn name args))) (Str name))))
+(rule ((= f (symbol-of (Expr (Function name args)))))
+      ((set (symbol-of (Expr (Function name args))) (Str name))))
+
+(function args-of (term) expr-list)
+(rule ((= f (args-of (Literal (Predicate sgn name args)))))
+      ((set (args-of (Literal (Predicate sgn name args))) args)))
+(rule ((= f (args-of (Expr (Function name args)))))
+      ((set (args-of (Expr (Function name args))) args)))
+
+(function count-vars-term (term) var-counts)
+(rule ((= f (count-vars-term (Literal x))))
+      ((set (count-vars-term (Literal x)) (count-vars-literal x))))
+(rule ((= f (count-vars-term (Expr x))))
+      ((set (count-vars-term (Expr x)) (count-vars-expr x))))
+
+;; kbo-gt between both predicates, and exprs
+(function kbo-gt (term term) bool)
+
+(rewrite (eq-str x (symbol-of (Expr (Var y)))) Incomparable)
+(rewrite (eq-str (symbol-of (Expr (Var x))) y) Incomparable)
+(rewrite (gt-str x (symbol-of (Expr (Var y)))) Incomparable)
+(rewrite (gt-str (symbol-of (Expr (Var x))) y) Incomparable)
+
+(function kbo-gt-args (expr-list expr-list) bool)
+(rule ((= f (kbo-gt t1 t2)))
+      ((set (kbo-gt t1 t2)
+            (and
+                  (var-counts-subset (count-vars-term t2) (count-vars-term t1))
+                  (or3
+                        (gt (w-term t1) (w-term t2))
+                        (and (gte (w-term t1) (w-term t2))
+                             (gt-str (symbol-of t1) (symbol-of t2)))
+                        (and3 (gte (w-term t1) (w-term t2))
+                              (eq-str (symbol-of t1) (symbol-of t2))
+                              (kbo-gt-args (args-of t1) (args-of t2)))
+                  )
+                  ))))
+
+(rewrite (kbo-gt-args x (args-of (Expr (Var y)))) Incomparable)
+(rewrite (kbo-gt-args (args-of (Expr (Var x))) y) Incomparable)
+
+(rule ((= f (kbo-gt-args ArgsEnd args2)))
+      ((set (kbo-gt-args ArgsEnd args2) False)))
+(rule ((= f (kbo-gt-args args1 ArgsEnd)))
+      ((set (kbo-gt-args args1 ArgsEnd) False)))
+(rule ((= f (kbo-gt-args (Args arg1 rest1) (Args arg2 rest2))))
+      ((set (kbo-gt-args (Args arg1 rest1) (Args arg2 rest2))
+            (or (kbo-gt (Expr arg1) (Expr arg2))
+                (kbo-gt-args rest1 rest2)))))
+
+(function test-terms (String) term)
+(set (test-terms "~p(a)")
+     (Literal (Predicate Neg "p" (Args (Function "a" ArgsEnd) ArgsEnd))))
+(set (test-terms "~q(W)")
+     (Literal (Predicate Neg "q" (Args (Var 1) ArgsEnd))))
+(set (test-terms "s(W)")
+     (Literal (Predicate Pos "s" (Args (Var 1) ArgsEnd))))
+
+(define kbo-gt-test1
+      (kbo-gt
+            (test-terms "~q(W)")
+            (test-terms "s(W)")))
+
+(run 100)
+
+(extract kbo-gt-test1)
+
+
+(define subtest1 (var-counts-subset (count-vars-term (test-terms "s(W)")) (count-vars-term (test-terms "~q(W)"))))
+(define subtest2 (w-term (test-terms "~q(W)")))
+(define subtest3 (w-term (test-terms "s(W)")))
+(define subtest4 (gt-str (symbol-of (test-terms "~q(W)"))
+                         (symbol-of (test-terms "s(W)"))))
+
+(run 100)
+(print kbo-gt)
+(extract subtest1)
+(extract subtest2)
+(extract subtest3)
+(extract subtest4)
+(check (= subtest4 False))
+(check (= kbo-gt-test1 False))
+
+;; implement literal gt
+(function literal-gt (literal literal) bool)
+
+
+;; TODO: add predicate that make it onl match on lits that we care about comparing
+
+;; A positive non-equality literal L is represented by a bag {{L}} (a bag of a bag of the atom)
+;; A negative non-equality literal ~L is represented by a bag {{L,L}} (a bag of a bag of two copies of the atom - the effect is to make negative literals bigger than positive ones)
+;; A positive equality literal T1 = T2 is represented by a bag {{T1},{T2}} (a bag of two bags, each containing one term)
+;; A negative equality literal T1 != T2 is represented by a bag {{T1,T2}} (a bag containing one bag, containing both terms).
+
+;; 16 cases
+
+;; TODO use literal-greater instead of w
+
+;; pos pred > pos pred
+;; pos pred > neg pred
+;; (rule ((= p (Predicate Pos p-name p-expr-list))
+;;        (= q (Predicate q-sgn q-name q-expr-list))
+;;        (= p-w (w-literal p))
+;;        (= q-w (w-literal q)))
+;;       ((set (kbo-greater p q)
+;;             (gt p-w q-w))))
+
+;; pos pred > pos eq
+;; pos pred > neg eq
+;; (rule ((= p (Predicate Pos p-name p-expr-list))
+;;        (= q (Eq q-sgn q-lhs q-rhs))
+;;        (= p-w (w-literal p))
+;;        (= q-lhs-w (w-expr q-lhs))
+;;        (= q-rhs-w (w-expr q-rhs)))
+;;       ((set (kbo-greater p q)
+;;             (and (gt p-w q-lhs-w) (gt p-w q-rhs-w)))))
+
+;; neg pred > pos pred
+;; (rule ((= p (Predicate Neg p-name p-expr-list))
+;;        (= q (Predicate q-sgn q-name q-expr-list))
+;;        (= p-w (w-literal p))
+;;        (= q-w (w-literal q)))
+;;       ((set (kbo-greater p q)
+;;             (gte p-w q-w))))
+
+;; neg pred > neg pred
+;; pos pred > pos pred #2
+;; (rule ((= p (Predicate sgn p-name p-expr-list))
+;;        (= q (Predicate sgn q-name q-expr-list))
+;;        (= p-w (w-literal p))
+;;        (= q-w (w-literal q)))
+;;       ((set (kbo-greater p q)
+;;             (gt p-w q-w))))
+
+;; neg pred > pos eq
+;; (rule ((= p (Predicate Neg p-name p-expr-list))
+;;        (= q (Eq q-sgn q-lhs q-rhs))
+;;        (= p-w (w-literal p))
+;;        (= q-lhs-w (w-expr q-lhs))
+;;        (= q-rhs-w (w-expr q-rhs)))
+;;       ((set (kbo-greater p q)
+;;             (and (gte p-w q-lhs-w) (gte p-w q-rhs-w)))))
+
+;; neg pred > neg eq
+
+;; pos eq > pos pred
+;; pos eq > neg pred
+;; pos eq > pos eq
+;; pos eq > neg eq
+
+;; neg eq > pos pred
+;; neg eq > neg pred
+;; neg eq > pos eq
+;; neg eq > neg eq
+
+
+;; (rule ((= f (Eq sgn expr1 expr2))
+;;        (= g (Eq sgn expr1 expr2))
+
+
+
+(relation in-cnf (clause))
+
+(in-cnf (Disjuncts
+            (Predicate
+                Pos
+                "pred2"
+                ArgsEnd)
+        DisjunctsEnd))
+
+(in-cnf (Disjuncts
+            (Predicate
+                Pos
+                "pred"
+                (Args
+                    (Function "even"
+                        (Args (Function "sum"
+                                    (Args (Function "two_sq" ArgsEnd)
+                                    (Args (Function "b" ArgsEnd)
+                                    ArgsEnd)))
+                        ArgsEnd))
+                    ArgsEnd))
+            DisjunctsEnd))
+ 
+
+; Left identity | ∀x (1 * x = x)
+(define axiom1 (Eq Pos (Function "*"
+                            (Args (Function "1" ArgsEnd)
+                            (Args (Var 1)
+                        ArgsEnd)))
+                       (Var 1)))
+; Left inverse | ∀x (x^−1 * x = 1)
+(define axiom2 (Eq Pos (Function "*"
+                            (Args (Function "inverse" (Args (Var 1) ArgsEnd))
+                            (Args (Var 1)
+                        ArgsEnd)))
+                       (Function "1" ArgsEnd)))
+; Associativity | ∀x∀y∀z ((x * y) * z = x * (y * z))
+(define axiom3 (Eq Pos (Function "*"
+                            (Args (Function "*" (Args (Var 1) (Args (Var 2) ArgsEnd)))
+                            (Args (Var 3)
+                        ArgsEnd)))
+                       (Function "*"
+                            (Args (Var 1)
+                            (Args (Function "*" (Args (Var 2) (Args (Var 3) ArgsEnd)))
+                        ArgsEnd)))))
+; Assumptions | ∀x(x · x = 1)
+(define assumption (Eq Pos (Function "*"
+                                (Args (Var 1) (Args (Var 1)
+                            ArgsEnd)))
+                           (Function "1" ArgsEnd)))
+; Conjecture | ∀x∀y(x · y = y · x)
+; Negated conjecture | ∃x∃y (x · y != y · x)
+; Skolemized negated conjecture | sK * sK0 != sK0 * sK
+(define not-conjecture (Eq Neg (Function "*"
+                                    (Args (Function "sK" ArgsEnd)
+                                    (Args (Function "sK0" ArgsEnd)
+                                ArgsEnd)))
+                               (Function "*"
+                                    (Args (Function "sK0" ArgsEnd)
+                                    (Args (Function "sK" ArgsEnd)
+                                ArgsEnd)))))
+;; forall xy eq(x, y) -> eq(y, x)
+;; forall xy !eq(x, y) or eq(y x)
+
+(in-cnf (Disjuncts axiom1 DisjunctsEnd))
+(in-cnf (Disjuncts axiom2 DisjunctsEnd))
+(in-cnf (Disjuncts axiom3 DisjunctsEnd))
+(in-cnf (Disjuncts assumption DisjunctsEnd))
+(in-cnf (Disjuncts not-conjecture DisjunctsEnd))
+
+; 
+
+
+
+
+(datatype opt-expr-pair
+      (SomeExprPair expr expr)
+      (NoneExprPair))
+
+(relation demand-opt-expr-pair (opt-expr-pair))
+
+(relation demand-expr (expr))
+
+(datatype subst
+      (Subst i64 expr subst)
+      (SubstEnd))
+
+(datatype opt-subst
+      (SomeSubst subst)
+      (NoneSubst))
+
+(datatype opt-expr
+      (SomeExpr expr)
+      (NoneExpr))
+(relation demand-opt-expr (opt-expr))
+
+(function lookup (subst i64) opt-expr)
+(function do-subst (expr subst) expr :cost 100)
+(function do-subst-expr-list (expr-list subst) expr-list :cost 100)
+
+(rule ((= f (do-subst (Function name args) substs)))
+      ((set (do-subst (Function name args) substs)
+            (Function name (do-subst-expr-list args substs)))))
+
+(rule ((= f (do-subst (Var x) substs)))
+      ((demand-opt-expr (lookup substs x))))
+
+(rule ((= f (do-subst (Var x) substs))
+       (= (SomeExpr e) (lookup substs x)))
+      ((set (do-subst (Var x) substs) e)))
+
+(rule ((= f (do-subst (Var x) substs))
+       (= NoneExpr (lookup substs x)))
+      ((set (do-subst (Var x) substs) (Var x))))
+
+(rule ((= f (do-subst-expr-list (Args arg rest) substs)))
+      ((set (do-subst-expr-list (Args arg rest) substs)
+            (Args (do-subst arg substs) (do-subst-expr-list rest substs)))))
+
+(rule ((= f (do-subst-expr-list ArgsEnd substs)))
+      ((set (do-subst-expr-list ArgsEnd substs) ArgsEnd)))
+
+(function first-conflict (expr expr) opt-expr-pair)
+(function first-conflict-expr-list (expr-list expr-list) opt-expr-pair)
+
+(rule ((= f (first-conflict e e)))
+      ((set (first-conflict e e) NoneExprPair)))
+
+(rule ((= f (lookup SubstEnd x)))
+      ((set (lookup SubstEnd x) (NoneExpr))))
+
+(rule ((= f (lookup (Subst x e substs) x)))
+      ((set (lookup (Subst x e substs) x) (SomeExpr e))))
+
+(rule ((= f (lookup (Subst x e substs) y)) (!= x y))
+      ((set (lookup (Subst x e substs) y)
+            (lookup substs y))))
+
+
+(rule ((= f (first-conflict (Var x) (Var y)))
+       (!= x y))
+      ((set (first-conflict (Var x) (Var y))
+            (SomeExprPair (Var x) (Var y)))))
+
+(rule ((= f (first-conflict (Function name args) (Var x))))
+      ((set (first-conflict (Function name args) (Var x))
+            (SomeExprPair (Function name args) (Var x)))))
+
+(rule ((= f (first-conflict (Var x) (Function name args))))
+      ((set (first-conflict (Var x) (Function name args))
+            (SomeExprPair (Var x) (Function name args)))))
+
+(rule ((= f (first-conflict (Function name args1) (Function name args2))))
+      ((set (first-conflict (Function name args1) (Function name args2))
+            (first-conflict-expr-list args1 args2))))
+
+(rule ((= f (first-conflict (Function name1 args1) (Function name2 args2)))
+       (!= name1 name2))
+      ((set (first-conflict (Function name1 args1) (Function name2 args2))
+            (SomeExprPair (Function name1 args1) (Function name2 args2)))))
+
+(rule ((= f (first-conflict-expr-list ArgsEnd ArgsEnd)))
+      ((set (first-conflict-expr-list ArgsEnd ArgsEnd) NoneExprPair)))
+(rule ((= f (first-conflict-expr-list (Args x y) ArgsEnd)))
+      ((panic "functions with the same name called with different arity?")))
+(rule ((= f (first-conflict-expr-list ArgsEnd (Args x y))))
+      ((panic "functions with the same name called with different arity?")))
+
+(rule ((= f (first-conflict-expr-list (Args arg1 rest1) (Args arg2 rest2))))
+      ((demand-opt-expr-pair (first-conflict arg1 arg2))))
+(rule ((= f (first-conflict-expr-list (Args arg1 rest1) (Args arg2 rest2)))
+       (= NoneExprPair (first-conflict arg1 arg2)))
+      ((set (first-conflict-expr-list (Args arg1 rest1) (Args arg2 rest2))
+            (first-conflict-expr-list rest1 rest2))))
+
+(rule ((= f (first-conflict-expr-list (Args arg1 rest1) (Args arg2 rest2)))
+       (= (SomeExprPair e1 e2) (first-conflict arg1 arg2)))
+      ((set (first-conflict-expr-list (Args arg1 rest1) (Args arg2 rest2))
+            (SomeExprPair e1 e2))))
+
+(function test-exprs (String) expr)
+(set (test-exprs "g(X,Y)")
+     (Function "g" (Args (Var 1) (Args (Var 2) (ArgsEnd)))))
+(set (test-exprs "f(X,Y)")
+     (Function "f" (Args (Var 1) (Args (Var 2) (ArgsEnd)))))
+(set (test-exprs "z(f(X,Y),X)")
+      (Function "z"
+            (Args (Function "f" (Args (Var 1) (Args (Var 2) (ArgsEnd))))
+            (Args (Var 1)
+            ArgsEnd))))
+(set (test-exprs "z(X,X)")
+      (Function "z"
+            (Args (Var 1)
+            (Args (Var 1)
+            ArgsEnd
+            ))))
+(set (test-exprs "f(X)") (Function "f" (Args (Var 1) ArgsEnd)))
+(set (test-exprs "f(Y)") (Function "f" (Args (Var 2) ArgsEnd)))
+
+(define first-conflict-test1
+      (first-conflict (test-exprs "g(X,Y)") (test-exprs "f(X,Y)")))
+(define first-conflict-test1-expected
+      (SomeExprPair (test-exprs "g(X,Y)") (test-exprs "f(X,Y)")))
+
+(define first-conflict-test2
+      (first-conflict (test-exprs "z(f(X,Y),X)") (test-exprs "z(X,X)")))
+(define first-conflict-test2-expected
+      (SomeExprPair (test-exprs "f(X,Y)") (Var 1)))
+
+(define first-conflict-test3
+      (first-conflict (test-exprs "z(f(X,Y),X)") (test-exprs "z(f(X,Y),X)")))
+(define first-conflict-test3-expected NoneExprPair)
+
+(define first-conflict-test4
+      (first-conflict (test-exprs "f(X)") (test-exprs "f(Y)")))
+(define first-conflict-test4-expected (SomeExprPair (Var 1) (Var 2)))
+
+(function opt-expr-pair-fst (opt-expr-pair) expr)
+(rule ((= f (SomeExprPair fst snd)))
+      ((set (opt-expr-pair-fst (SomeExprPair fst snd)) fst)))
+
+(define do-subst-test1
+      (do-subst
+            (test-exprs "z(f(X,Y),X)")
+            (Subst 1 (test-exprs "f(X,Y)") SubstEnd)))
+(set (test-exprs "z(f(f(X,Y),Y),f(X,Y))")
+      (Function "z"
+            (Args (Function "f" (Args (test-exprs "f(X,Y)") (Args (Var 2) (ArgsEnd))))
+            (Args (test-exprs "f(X,Y)")
+            ArgsEnd))))
+(define do-subst-test1-expected
+      (test-exprs "z(f(f(X,Y),Y),f(X,Y))"))
+
+(run 100)
+
+
+
+(check (= first-conflict-test1 first-conflict-test1-expected))
+(check (= first-conflict-test2 first-conflict-test2-expected))
+(check (= first-conflict-test3 first-conflict-test3-expected))
+(check (= first-conflict-test4 first-conflict-test4-expected))
+
+(check (= do-subst-test1 do-subst-test1-expected))
+
+(function has-var (expr i64) bool)
+(function has-var-expr-list (expr-list i64) bool)
+
+(rule ((= f (has-var (Var x) x)))
+      ((set (has-var (Var x) x) True)))
+(rule ((= f (has-var (Var x) y))
+       (!= x y))
+      ((set (has-var (Var x) y) False)))
+(rule ((= f (has-var (Function name args) x)))
+      ((set (has-var (Function name args) x)
+            (has-var-expr-list args x))))
+
+(rule ((= f (has-var-expr-list ArgsEnd x)))
+      ((set (has-var-expr-list ArgsEnd x) False)))
+(rule ((= f (has-var-expr-list (Args arg rest) x)))
+      ((set (has-var-expr-list (Args arg rest) x)
+            (or (has-var arg x) (has-var-expr-list rest x)))))
+
+(function mgu (expr expr) opt-subst :cost 1000)
+(function mgu-helper (expr expr subst) opt-subst :cost 1000)
+
+(rule ((= f (mgu e1 e2)))
+      ((set (mgu e1 e2) (mgu-helper e1 e2 SubstEnd))))
+
+
+; Assumption: e1 and e2 do not contain any variables in the "keys" of
+; subst-so-far
+(rule ((= f (mgu-helper e1 e2 subst-so-far)))
+      ((demand-opt-expr-pair (first-conflict e1 e2))))
+
+(function update-subst-vals (i64 expr subst) subst)
+(rewrite (update-subst-vals from to (Subst x e rest))
+         (Subst x (do-subst e (Subst from to SubstEnd)) (update-subst-vals from to rest)))
+(rewrite (update-subst-vals from to SubstEnd) (SubstEnd))
+
+(function update-subst (i64 expr subst) subst :cost 1000)
+; x is already in the subst. bad.
+(rule ((= f (update-subst x e1 (Subst x e2 rest))))
+      ((panic "update-subst same var")))
+; Insert here! But we still have to update the values
+(rule ((= f (update-subst x1 e1 (Subst x2 e2 rest)))
+       (< x1 x2))
+      ((set (update-subst x1 e1 (Subst x2 e2 rest))
+            (Subst x1 e1 (update-subst-vals x1 e1 (Subst x2 e2 rest))))))
+; Insert later! Update the front value as we move past it
+(rule ((= f (update-subst x1 e1 (Subst x2 e2 rest)))
+       (> x1 x2))
+      ((set (update-subst x1 e1 (Subst x2 e2 rest))
+            (Subst x2 (do-subst e2 (Subst x1 e1 SubstEnd)) (update-subst x1 e1 rest)))))
+(rewrite (update-subst x e SubstEnd) (Subst x e SubstEnd))
+
+; No conflicts - empty substitution
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) NoneExprPair))
+      ((set (mgu-helper e1 e2 subst-so-far) (SomeSubst subst-so-far))))
+
+; Conflict is a function - cannot unify
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) (SomeExprPair (Function name1 args1) (Function name2 args2))))
+      ((set (mgu-helper e1 e2 subst-so-far) NoneSubst)))
+
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) (SomeExprPair (Var x) to)))
+      ((demand-bool (has-var to x))))
+
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) (SomeExprPair (Var x) to))
+       (= True (has-var to x)))
+      ((set (mgu-helper e1 e2 subst-so-far) NoneSubst)))
+
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) (SomeExprPair (Var x) to))
+       (= False (has-var to x)))
+      ((set (mgu-helper e1 e2 subst-so-far)
+            (mgu-helper
+                  (do-subst e1 (update-subst x to subst-so-far))
+                  (do-subst e2 (update-subst x to subst-so-far))
+                  (update-subst x to subst-so-far)))))
+
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) (SomeExprPair (Function name args) (Var x))))
+      ((demand-bool (has-var (Function name args) x))))
+
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) (SomeExprPair (Function name args) (Var x)))
+       (= True (has-var (Function name args) x)))
+      ((set (mgu-helper e1 e2 subst-so-far) NoneSubst)))
+
+(rule ((= f (mgu-helper e1 e2 subst-so-far))
+       (= (first-conflict e1 e2) (SomeExprPair (Function name args) (Var x)))
+       (= False (has-var (Function name args) x)))
+      ((set (mgu-helper e1 e2 subst-so-far)
+            (mgu-helper
+                  (do-subst e1 (update-subst x (Function name args) subst-so-far))
+                  (do-subst e2 (update-subst x (Function name args) subst-so-far))
+                  (update-subst x (Function name args) subst-so-far)))))
+
+(run 100)
+
+(function unwrap-opt-subst (opt-subst) subst :cost 1000)
+(rule ((= f (SomeSubst s)))
+      ((set (unwrap-opt-subst (SomeSubst s)) s)))
+
+(set (test-exprs "Y") (Var 2))
+(set (test-exprs "z") (Function "z" ArgsEnd))
+(set (test-exprs "f(X)") (Function "f" (Args (Var 1) ArgsEnd)))
+(set (test-exprs "f(Y)") (Function "f" (Args (Var 2) ArgsEnd)))
+(set (test-exprs "g(Y)") (Function "g" (Args (Var 2) ArgsEnd)))
+(set (test-exprs "g(z)") (Function "g" (Args (Function "z" ArgsEnd) ArgsEnd)))
+(set (test-exprs "j(X4)") (Function "j" (Args (Var 4) ArgsEnd)))
+(set (test-exprs "f(X,X)") (Function "f" (Args (Var 1) (Args (Var 1) ArgsEnd))))
+(set (test-exprs "f(X,Y)") (Function "f" (Args (Var 1) (Args (Var 2) ArgsEnd))))
+(set (test-exprs "f(f(X))") (Function "f" (Args (Function "f" (Args (Var 1) ArgsEnd)) ArgsEnd)))
+(set (test-exprs "f(g(Y),Z)") (Function "f" (Args (Function "g" (Args (Var 2) ArgsEnd)) (Args (Var 3) ArgsEnd))))
+(set (test-exprs "f(g(Y),z)") (Function "f" (Args (Function "g" (Args (Var 2) ArgsEnd)) (Args (Function "z" ArgsEnd) ArgsEnd))))
+(set (test-exprs "f(g(z),z)") (Function "f" (Args (Function "g" (Args (Function "z" ArgsEnd) ArgsEnd)) (Args (Function "z" ArgsEnd) ArgsEnd))))
+(set (test-exprs "h(j(X4),a)") (Function "h" (Args (Function "j" (Args (Var 4) ArgsEnd)) (Args (Function "a" ArgsEnd) ArgsEnd))))
+(set (test-exprs "f(X1,X3,X2)") (Function "f" (Args (Var 1) (Args (Var 3) (Args (Var 2) ArgsEnd)))))
+(set (test-exprs "f(g(Y),g(Y))") (Function "f" (Args (Function "g" (Args (Var 2) ArgsEnd)) (Args (Function "g" (Args (Var 2) ArgsEnd)) ArgsEnd))))
+(set (test-exprs "g(h(j(X4),a))") (Function "g" (Args (Function "h" (Args (Function "j" (Args (Var 4) ArgsEnd)) (Args (Function "a" ArgsEnd) ArgsEnd))) ArgsEnd)))
+(set (test-exprs "f(g(X2),j(X4),h(X3,a))") (Function "f" (Args (Function "g" (Args (Var 2) ArgsEnd)) (Args (Function "j" (Args (Var 4) ArgsEnd)) (Args (Function "h" (Args (Var 3) (Args (Function "a" ArgsEnd) ArgsEnd))) ArgsEnd)))))
+(set (test-exprs "f(g(h(j(X4),a)),j(X4),h(j(X4),a))") (Function "f" (Args (Function "g" (Args (Function "h" (Args (Function "j" (Args (Var 4) ArgsEnd)) (Args (Function "a" ArgsEnd) ArgsEnd))) ArgsEnd)) (Args (Function "j" (Args (Var 4) ArgsEnd)) (Args (Function "h" (Args (Function "j" (Args (Var 4) ArgsEnd)) (Args (Function "a" ArgsEnd) ArgsEnd))) ArgsEnd)))))
+
+(define mgu-test1 (mgu (test-exprs "f(X,X)") (test-exprs "f(g(Y),Z)")))
+(define mgu-test1-expected (SomeSubst (Subst 1 (test-exprs "g(Y)") (Subst 3 (test-exprs "g(Y)") SubstEnd))))
+(define mgu-test1-lhs-substed (do-subst (test-exprs "f(X,X)") (unwrap-opt-subst mgu-test1)))
+(define mgu-test1-rhs-substed (do-subst (test-exprs "f(g(Y),Z)") (unwrap-opt-subst mgu-test1)))
+(define mgu-test1-substed-expected (test-exprs "f(g(Y),g(Y))"))
+
+(define mgu-test2 (mgu (test-exprs "f(X,Y)") (test-exprs "f(g(Y),z)")))
+(define mgu-test2-expected (SomeSubst (Subst 1 (test-exprs "g(z)") (Subst 2 (test-exprs "z") SubstEnd))))
+(define mgu-test2-lhs-substed (do-subst (test-exprs "f(X,Y)") (unwrap-opt-subst mgu-test2)))
+(define mgu-test2-rhs-substed (do-subst (test-exprs "f(g(Y),z)") (unwrap-opt-subst mgu-test2)))
+(define mgu-test2-substed-expected (test-exprs "f(g(z),z)"))
+
+(define mgu-test3 (mgu (test-exprs "f(X1,X3,X2)") (test-exprs "f(g(X2),j(X4),h(X3,a))")))
+(define mgu-test3-expected (SomeSubst (Subst 1 (test-exprs "g(h(j(X4),a))") (Subst 2 (test-exprs "h(j(X4),a)") (Subst 3 (test-exprs "j(X4)") SubstEnd)))))
+(define mgu-test3-lhs-substed (do-subst (test-exprs "f(X1,X3,X2)") (unwrap-opt-subst mgu-test3)))
+(define mgu-test3-rhs-substed (do-subst (test-exprs "f(g(X2),j(X4),h(X3,a))") (unwrap-opt-subst mgu-test3)))
+(define mgu-test3-substed-expected (test-exprs "f(g(h(j(X4),a)),j(X4),h(j(X4),a))"))
+
+(define mgu-test4 (mgu (test-exprs "f(X)") (test-exprs "g(Y)")))
+(define mgu-test4-expected NoneSubst)
+(define mgu-test4-lhs-substed (do-subst (test-exprs "f(X)") (unwrap-opt-subst mgu-test4)))
+(define mgu-test4-rhs-substed (do-subst (test-exprs "g(Y)") (unwrap-opt-subst mgu-test4)))
+
+(define mgu-test5 (mgu (test-exprs "f(X)") (test-exprs "f(X)")))
+(define mgu-test5-expected (SomeSubst SubstEnd))
+(define mgu-test5-lhs-substed (do-subst (test-exprs "f(X)") (unwrap-opt-subst mgu-test5)))
+(define mgu-test5-rhs-substed (do-subst (test-exprs "f(X)") (unwrap-opt-subst mgu-test5)))
+(define mgu-test5-substed-expected (test-exprs "f(X)"))
+
+(define mgu-test6 (mgu (test-exprs "f(X)") (test-exprs "f(f(X))")))
+(define mgu-test6-expected NoneSubst)
+(define mgu-test6-lhs-substed (do-subst (test-exprs "f(X)") (unwrap-opt-subst mgu-test6)))
+(define mgu-test6-rhs-substed (do-subst (test-exprs "f(f(X))") (unwrap-opt-subst mgu-test6)))
+
+(define mgu-test7 (mgu (test-exprs "f(X)") (test-exprs "f(Y)")))
+(define mgu-test7-expected (SomeSubst (Subst 1 (test-exprs "Y") SubstEnd)))
+(define mgu-test7-lhs-substed (do-subst (test-exprs "f(X)") (unwrap-opt-subst mgu-test7)))
+(define mgu-test7-rhs-substed (do-subst (test-exprs "f(Y)") (unwrap-opt-subst mgu-test7)))
+(define mgu-test7-substed-expected (test-exprs "f(Y)"))
+
+(define mgu-test8 (mgu (test-exprs "f(g(Y),Z)") (test-exprs "f(X,X)")))
+(define mgu-test8-expected (SomeSubst (Subst 1 (test-exprs "g(Y)") (Subst 3 (test-exprs "g(Y)") SubstEnd))))
+(define mgu-test8-lhs-substed (do-subst (test-exprs "f(g(Y),Z)") (unwrap-opt-subst mgu-test8)))
+(define mgu-test8-rhs-substed (do-subst (test-exprs "f(X,X)") (unwrap-opt-subst mgu-test8)))
+(define mgu-test8-substed-expected (test-exprs "f(g(Y),g(Y))"))
+
+(define mgu-test9 (mgu (test-exprs "f(g(X2),j(X4),h(X3,a))") (test-exprs "f(X1,X3,X2)")))
+(define mgu-test9-expected (SomeSubst (Subst 1 (test-exprs "g(h(j(X4),a))") (Subst 2 (test-exprs "h(j(X4),a)") (Subst 3 (test-exprs "j(X4)") SubstEnd)))))
+(define mgu-test9-lhs-substed (do-subst (test-exprs "f(g(X2),j(X4),h(X3,a))") (unwrap-opt-subst mgu-test9)))
+(define mgu-test9-rhs-substed (do-subst (test-exprs "f(X1,X3,X2)") (unwrap-opt-subst mgu-test9)))
+(define mgu-test9-substed-expected (test-exprs "f(g(h(j(X4),a)),j(X4),h(j(X4),a))"))
+
+(run 100)
+
+; (check (= mgu-test1 mgu-test1-expected))
+; (check (= mgu-test1-lhs-substed mgu-test1-substed-expected))
+; (check (= mgu-test1-rhs-substed mgu-test1-substed-expected))
+
+; (check (= mgu-test2 mgu-test2-expected))
+; (check (= mgu-test2-lhs-substed mgu-test2-substed-expected))
+; (check (= mgu-test2-rhs-substed mgu-test2-substed-expected))
+
+(extract (unwrap-opt-subst mgu-test3))
+
+(print mgu-helper)
+(check (= mgu-test3 mgu-test3-expected))
+(check (= mgu-test3-lhs-substed mgu-test3-substed-expected))
+(check (= mgu-test3-rhs-substed mgu-test3-substed-expected))
+
+(check (= mgu-test4 mgu-test4-expected))
+
+(check (= mgu-test5 mgu-test5-expected))
+(check (= mgu-test5-lhs-substed mgu-test5-substed-expected))
+(check (= mgu-test5-rhs-substed mgu-test5-substed-expected))
+
+(check (= mgu-test6 mgu-test6-expected))
+
+(check (= mgu-test7 mgu-test7-expected))
+(check (= mgu-test7-lhs-substed mgu-test7-substed-expected))
+(check (= mgu-test7-rhs-substed mgu-test7-substed-expected))
+
+(check (= mgu-test8 mgu-test8-expected))
+(check (= mgu-test8-lhs-substed mgu-test8-substed-expected))
+(check (= mgu-test8-rhs-substed mgu-test8-substed-expected))
+
+(check (= mgu-test9 mgu-test9-expected))
+(check (= mgu-test9-lhs-substed mgu-test9-substed-expected))
+(check (= mgu-test9-rhs-substed mgu-test9-substed-expected))
