@@ -603,6 +603,7 @@ pub enum Fact {
     /// Must be at least two things in an eq fact
     Eq(Vec<Expr>),
     Fact(Expr),
+    MinimalForRule(Expr),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -610,6 +611,7 @@ pub enum NormFact {
     Assign(Symbol, NormExpr), // assign symbol to a tuple
     AssignLit(Symbol, Literal),
     ConstrainEq(Symbol, Symbol),
+    MinimalForRule(Symbol),
 }
 
 impl NormFact {
@@ -619,7 +621,8 @@ impl NormFact {
             NormFact::ConstrainEq(lhs, rhs) => Fact::Eq(vec![Expr::Var(*lhs), Expr::Var(*rhs)]),
             NormFact::AssignLit(symbol, lit) => {
                 Fact::Eq(vec![Expr::Var(*symbol), Expr::Lit(lit.clone())])
-            }
+            },
+            NormFact::MinimalForRule(symbol) => Fact::MinimalForRule(Expr::Var(*symbol)),
         }
     }
 
@@ -628,6 +631,7 @@ impl NormFact {
             NormFact::Assign(symbol, expr) => NormFact::Assign(*symbol, f(expr)),
             NormFact::ConstrainEq(lhs, rhs) => NormFact::ConstrainEq(*lhs, *rhs),
             NormFact::AssignLit(symbol, lit) => NormFact::AssignLit(*symbol, lit.clone()),
+            NormFact::MinimalForRule(symbol) => NormFact::MinimalForRule(*symbol),
         }
     }
 
@@ -642,6 +646,9 @@ impl NormFact {
             NormFact::ConstrainEq(lhs, rhs) => {
                 NormFact::ConstrainEq(fvar(*lhs, false), fvar(*rhs, false))
             }
+            NormFact::MinimalForRule(symbol) => {
+                NormFact::MinimalForRule(fvar(*symbol, false))
+            }
         }
     }
 }
@@ -651,6 +658,7 @@ impl ToSexp for Fact {
         match self {
             Fact::Eq(exprs) => list!("=", ++ exprs),
             Fact::Fact(expr) => expr.to_sexp(),
+            Fact::MinimalForRule(expr) => list!("minimal-for-rule", expr),
         }
     }
 }
@@ -660,6 +668,7 @@ impl Fact {
         match self {
             Fact::Eq(exprs) => Fact::Eq(exprs.iter().map(f).collect()),
             Fact::Fact(expr) => Fact::Fact(f(expr)),
+            Fact::MinimalForRule(expr) => Fact::MinimalForRule(f(expr)),
         }
     }
 }

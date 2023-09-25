@@ -1,0 +1,28 @@
+(datatype Math
+    (Num i64)
+    (Var String)
+    (Mul Math Math)
+    (Sqrt Math))
+
+; Ideal main loop: 
+; (repeat num steps (saturate calc-error) error-guarded-rewrites)
+(function error (Math) i64)
+
+; sqrt(x*x) -> x
+(rule ((= f (Sqrt (Mul x x)))
+       (= e (error f))
+       (minimal-for-rule e)    ; (= e 5)
+      )
+      ((union f x)))
+
+; Saturate error calculation. Right now, it's hardcoded, but we really have to 
+; track ASTs, find true physical...
+(set (error (Sqrt (Mul (Num 1) (Num 1)))) 5)
+(set (error (Sqrt (Mul (Num 100) (Num 100)))) 7)
+
+; Make best improvement
+(run 1)
+
+(print error)
+(check (= (Sqrt (Mul (Num 1) (Num 1))) (Num 1)))
+(check (!= (Sqrt (Mul (Num 100) (Num 100))) (Num 100)))

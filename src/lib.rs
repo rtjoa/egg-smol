@@ -609,6 +609,7 @@ impl EGraph {
                 );
                 report.updated |= !all_values.is_empty();
                 searched.push((name, all_values, rule_search_time));
+                log::info!("{:?}", rule);
             } else {
                 report.updated = true;
             }

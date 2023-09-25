@@ -251,6 +251,9 @@ impl<'a> Context<'a> {
             Fact::Fact(e) => {
                 self.check_query_expr(e, self.unit.clone());
             }
+            Fact::MinimalForRule(e) => {
+                self.check_query_expr(e, self.unit.clone());
+            }
         }
     }
 

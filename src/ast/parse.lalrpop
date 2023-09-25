@@ -112,6 +112,7 @@ Fact: Fact = {
         es.push(e);
         Fact::Eq(es)
     },
+    "(" "minimal-for-rule" <Expr> ")" => Fact::MinimalForRule(<>),
     <Expr> => Fact::Fact(<>),
 }
 

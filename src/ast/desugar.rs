@@ -125,6 +125,9 @@ fn flatten_facts(facts: &Vec<Fact>, desugar: &mut Desugar) -> Vec<NormFact> {
             Fact::Fact(expr) => {
                 equalities.push((desugar.get_fresh(), expr.clone()));
             }
+            Fact::MinimalForRule(expr) => {
+                equalities.push((desugar.get_fresh(), expr.clone())); 
+            }
         }
     }
 

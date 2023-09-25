@@ -258,6 +258,9 @@ impl TypeInfo {
                     bound_in_constraint.push(*var1);
                     bound_in_constraint.push(*var2);
                 }
+                NormFact::MinimalForRule(_) => {
+                    // TODO!
+                }
             }
         }
         let_bound.extend(bound_in_constraint);
@@ -428,6 +431,9 @@ impl TypeInfo {
                     return Err(TypeError::Unbound(*var1));
                 }
             }
+            NormFact::MinimalForRule(_) => {
+                // TODO!
+            } 
         }
         Ok(())
     }

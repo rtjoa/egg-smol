@@ -270,6 +270,9 @@ fn instrument_facts(
                     );
                 }
             }
+            NormFact::MinimalForRule(_) => {
+                // TODO!
+            }
         }
     }
 
@@ -528,6 +531,9 @@ fn add_rule_proof(
                     NormExpr::Call("Cons__".into(), vec![pfresh, current_proof]),
                 ));
                 current_proof = fresh;
+            }
+            NormFact::MinimalForRule(_) => {
+                // TODO!
             }
         }
     }
